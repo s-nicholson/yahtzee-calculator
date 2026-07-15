@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta charset="utf-8">
+  <title>Yahtzee Score Keeper</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
+  <style>
+    * { box-sizing: border-box }
+    body, html, input, select, button { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important }
+
+    /* ── Layout (core — leave alone) ───────────────────────────────────── */
+    #app { display: flex; height: 100dvh; overflow: hidden }
+    #sidebar { width: 240px; flex-shrink: 0; background: #f8f9fa; border-right: 1px solid #dee2e6; display: flex; flex-direction: column; transition: transform .25s ease, width .25s ease; overflow: hidden }
+    #sidebar.collapsed { width: 0; border: none }
+    #sidebar-inner { width: 240px; display: flex; flex-direction: column; height: 100%; overflow: hidden }
+    .sidebar-header { padding: 14px 12px 10px; border-bottom: 1px solid #dee2e6; display: flex; align-items: center; justify-content: space-between }
+    .sidebar-header h6 { margin: 0; font-size: 13px; font-weight: 600; color: #444; text-transform: uppercase; letter-spacing: .05em }
+    #record-list { flex: 1; overflow-y: auto; padding: 6px }
+    .record-item { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 14px; color: #333; min-height: 40px }
+    .record-item:hover { background: #e9ecef }
+    .record-item.active { background: #E6F1FB; color: #0C447C; font-weight: 500 }
+    .record-item .record-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+    .record-item .btn-icon-sm { width: 28px; height: 28px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border: none; background: none; border-radius: 4px; font-size: 14px; color: #888; cursor: pointer }
+    .record-item .btn-icon-sm:hover { background: #dee2e6; color: #333 }
+    .sidebar-footer { padding: 8px }
+    #github-link { display: none; }
+    #github-link.btn-icon-sm { color: #888 }
+    #sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 100 }
+    #sidebar-overlay.show { display: block }
+    @media(max-width:640px) {
+      #sidebar { position: fixed; left: 0; top: 0; bottom: 0; z-index: 101; transform: translateX(-100%) }
+      #sidebar.open { transform: translateX(0) }
+    }
+    #main { flex: 1; overflow-y: auto; display: flex; flex-direction: column; min-width: 0 }
+    #topbar { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #dee2e6; background: #fff; flex-shrink: 0 }
+    #record-title { font-size: 16px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+    #content { padding: 12px; flex: 1 }
+    .btn-icon { background: none; border: none; cursor: pointer; padding: 0; width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; font-size: 18px; color: #444; -webkit-tap-highlight-color: transparent }
+    .btn-icon:hover, .btn-icon:focus-visible { background: #f0f0f0 }
+    .btn-icon.danger { color: #c0392b }
+    .btn-icon.danger:hover { background: #fdecea }
+    .form-control, .form-select { min-height: 44px; font-size: 15px !important }
+    .btn { min-height: 44px }
+    .btn-sm { min-height: 40px }
+    #no-record { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; color: #aaa; gap: 12px; text-align: center; padding: 40px }
+
+    /* ── Yahtzee-specific styles ──────────────────────────────────────── */
+    #winner-banner { background: linear-gradient(135deg,#F6C453,#E8A93B); color: #5A3E00; border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; font-weight: 600; display: flex; align-items: center; gap: 10px; font-size: 16px }
+    #players-empty { font-size: 13px; color: #888; padding: 8px 2px }
+    .players-chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px }
+    .player-chip { background: #fff; border: 1px solid #ddd; border-radius: 20px; padding: 6px 8px 6px 14px; display: flex; align-items: center; gap: 6px; font-size: 14px }
+    .player-chip button { border: none; background: none; color: #c0392b; width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center }
+    .player-chip button:hover { background: #fdecea }
+    .score-scroll { overflow: auto; max-height: 65vh; border: 1px solid #e2e2e2; border-radius: 10px }
+    table.scorecard { border-collapse: collapse; width: 100%; font-size: 14px }
+    table.scorecard th, table.scorecard td { padding: 6px 8px; border-bottom: 1px solid #eee; white-space: nowrap }
+    table.scorecard thead th { position: sticky; top: 0; background: #fff; z-index: 2; border-bottom: 2px solid #dee2e6 }
+    table.scorecard td.cat-label, table.scorecard th.cat-label { position: sticky; left: 0; background: #f8f9fa; z-index: 1; text-align: left; font-weight: 500; min-width: 130px }
+    table.scorecard th.cat-label { z-index: 3 }
+    table.scorecard .cat-hint { font-size: 11px; color: #999; font-weight: 400; display: block }
+    table.scorecard tr.section-row td { background: #f0f4f8; font-weight: 600; color: #0C447C }
+    table.scorecard tr.total-row td { background: #E6F1FB; font-weight: 700; color: #0C447C; border-top: 2px solid #cfe2f3 }
+    table.scorecard input.score-input, table.scorecard select.score-input { width: 68px; min-height: 38px; text-align: center; border: 1px solid #ddd; border-radius: 6px; padding: 4px }
+    table.scorecard input.score-input:focus, table.scorecard select.score-input:focus { outline: 2px solid #6ea8fe; border-color: #6ea8fe }
+    th.player-col { text-align: center }
+    .player-col-name { display: flex; align-items: center; justify-content: center; gap: 6px }
+    .player-col-name button { border: none; background: none; color: #c0392b; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; font-size: 12px }
+    .player-col-name button:hover { background: #fdecea }
+    .trophy { color: #E8A93B }
+  </style>
+</head>
+<body>
+  <div id="app">
+
+    <!-- Sidebar (core) -->
+    <div id="sidebar-overlay" onclick="toggleSidebar()"></div>
+    <div id="sidebar">
+      <div id="sidebar-inner">
+        <div class="sidebar-header">
+          <h6>Games</h6>
+          <div class="d-flex align-items-center gap-1">
+            <a id="github-link" class="btn-icon-sm" href="#" target="_blank" rel="noopener" title="View source on GitHub"><i class="bi bi-github"></i></a>
+            <button class="btn-icon-sm" onclick="toggleSidebar()" aria-label="Close"><i class="bi bi-x-lg"></i></button>
+          </div>
+        </div>
+        <div id="record-list"></div>
+        <div class="sidebar-footer">
+          <button class="btn btn-sm btn-outline-primary w-100" onclick="newRecord()"><i class="bi bi-plus me-1"></i>New game</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main (core) -->
+    <div id="main">
+      <div id="topbar">
+        <button class="btn-icon" onclick="toggleSidebar()" aria-label="Menu"><i class="bi bi-list" style="font-size:22px"></i></button>
+        <span id="record-title">Select a game</span>
+        <button class="btn-icon" id="share-btn" onclick="shareRecord()" aria-label="Share" title="Share via link" style="display:none"><i class="bi bi-share"></i></button>
+        <button class="btn-icon danger" id="reset-btn" onclick="resetAll()" aria-label="Reset" style="display:none"><i class="bi bi-trash"></i></button>
+      </div>
+
+      <div id="content">
+        <div id="no-record">
+          <i class="bi bi-dice-5" style="font-size:48px;opacity:.3"></i>
+          <div>Open the menu to select or start a new game</div>
+          <button class="btn btn-primary" onclick="toggleSidebar();setTimeout(()=>newRecord(),300)"><i class="bi bi-plus me-1"></i>New game</button>
+        </div>
+
+        <div id="record-ui" style="display:none">
+          <div id="winner-banner" style="display:none"></div>
+
+          <div class="card mb-3">
+            <div class="card-body">
+              <label class="form-label" style="font-size:13px;color:#888">Players</label>
+              <div class="players-chip-row" id="player-chips"></div>
+              <div id="players-empty" style="display:none">No players yet — add everyone before scoring.</div>
+              <div class="d-flex gap-2">
+                <input type="text" class="form-control" id="player-name-input" placeholder="Player name" onkeydown="if(event.key==='Enter'){addPlayer()}">
+                <button class="btn btn-primary" onclick="addPlayer()"><i class="bi bi-plus"></i></button>
+              </div>
+              <button class="btn btn-sm btn-outline-secondary mt-2" id="duplicate-players-btn" onclick="duplicatePlayers()" style="display:none">
+                <i class="bi bi-copy me-1"></i>Start new game with these players
+              </button>
+            </div>
+          </div>
+
+          <div id="scorecard-wrap"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ════════════════════════════════════════════════════════════════════
+       APP CONFIG
+       ════════════════════════════════════════════════════════════════════ */
+    const STORAGE_KEY = 'yahtzee_games_v1';
+    const APP_LABEL = 'game';
+
+    /* ════════════════════════════════════════════════════════════════════
+       DOMAIN MODEL — Yahtzee scorecard
+       game = { players: [{id,name}], scores: { [playerId]: { catKey: number|null, yahtzeeBonus: number } } }
+       ════════════════════════════════════════════════════════════════════ */
+    let game = { players: [], scores: {} };
+
+    // type 'multiple': score must be 0 or a multiple of `face` (up to 5×face) — rendered as a <select>.
+    // type 'fixed': score is 0 or exactly `value` — rendered as a <select>.
+    // type 'sum': score is 0 or the sum of 5 dice (5–30) — rendered as a number input.
+    const UPPER = [
+      { key: 'ones',   label: 'Ones',   hint: 'Sum of 1s', type: 'multiple', face: 1 },
+      { key: 'twos',   label: 'Twos',   hint: 'Sum of 2s', type: 'multiple', face: 2 },
+      { key: 'threes', label: 'Threes', hint: 'Sum of 3s', type: 'multiple', face: 3 },
+      { key: 'fours',  label: 'Fours',  hint: 'Sum of 4s', type: 'multiple', face: 4 },
+      { key: 'fives',  label: 'Fives',  hint: 'Sum of 5s', type: 'multiple', face: 5 },
+      { key: 'sixes',  label: 'Sixes',  hint: 'Sum of 6s', type: 'multiple', face: 6 },
+    ];
+    const LOWER = [
+      { key: 'threeKind',     label: '3 of a Kind',   hint: 'Sum of all dice', type: 'sum' },
+      { key: 'fourKind',      label: '4 of a Kind',   hint: 'Sum of all dice', type: 'sum' },
+      { key: 'fullHouse',     label: 'Full House',    hint: '25 pts',          type: 'fixed', value: 25 },
+      { key: 'smallStraight', label: 'Sm. Straight',  hint: '30 pts',          type: 'fixed', value: 30 },
+      { key: 'largeStraight', label: 'Lg. Straight',  hint: '40 pts',          type: 'fixed', value: 40 },
+      { key: 'yahtzee',       label: 'Yahtzee',       hint: '50 pts',          type: 'fixed', value: 50 },
+      { key: 'chance',        label: 'Chance',        hint: 'Sum of all dice', type: 'sum' },
+    ];
+    const ALL_CATS = UPPER.concat(LOWER).map(c => c.key);
+
+    function addPlayer() {
+      const input = document.getElementById('player-name-input');
+      const name = input.value.trim();
+      if (!name) return;
+      const id = uid();
+      game.players.push({ id, name });
+      game.scores[id] = {};
+      input.value = '';
+      onUpdate();
+      input.focus();
+    }
+    function removePlayer(id) {
+      const p = game.players.find(p => p.id === id);
+      if (!p || !confirm(`Remove ${p.name} from this game?`)) return;
+      game.players = game.players.filter(p => p.id !== id);
+      delete game.scores[id];
+      onUpdate();
+    }
+    function findCat(key) { return UPPER.concat(LOWER).find(c => c.key === key); }
+
+    // Clamps/snaps a raw entry to the nearest value that's actually legal for the category.
+    function sanitizeScore(cat, raw) {
+      if (raw === '' || raw === null || raw === undefined) return null;
+      let n = Math.max(0, parseInt(raw, 10) || 0);
+      if (!cat) return n; // e.g. yahtzeeBonus, which has no fixed rule
+      if (cat.type === 'fixed') {
+        return n >= cat.value ? cat.value : 0; // only 0 or the fixed value are legal
+      }
+      if (cat.type === 'multiple') {
+        const maxVal = cat.face * 5;
+        n = Math.min(n, maxVal);
+        return Math.round(n / cat.face) * cat.face; // snap to nearest multiple of the face
+      }
+      // 'sum' — five dice, each 1–6: legal range is 0 or 5–30
+      n = Math.min(n, 30);
+      if (n > 0 && n < 5) n = 5;
+      return n;
+    }
+
+    function setScore(playerId, key, raw) {
+      if (!game.scores[playerId]) game.scores[playerId] = {};
+      const cat = findCat(key);
+      game.scores[playerId][key] = sanitizeScore(cat, raw);
+      onUpdate();
+    }
+
+    function calcTotals(playerId) {
+      const s = game.scores[playerId] || {};
+      const upperSum = UPPER.reduce((t, c) => t + (Number(s[c.key]) || 0), 0);
+      const bonus = upperSum >= 63 ? 35 : 0;
+      const bonusYahtzees = Number(s.yahtzeeBonus) || 0;
+      const lowerSum = LOWER.reduce((t, c) => t + (Number(s[c.key]) || 0), 0) + bonusYahtzees * 100;
+      const grand = upperSum + bonus + lowerSum;
+      const filledCount = ALL_CATS.filter(k => s[k] !== null && s[k] !== undefined).length;
+      return { upperSum, bonus, lowerSum, grand, complete: filledCount === ALL_CATS.length };
+    }
+
+    function renderPlayerChips() {
+      const chips = document.getElementById('player-chips');
+      const empty = document.getElementById('players-empty');
+      empty.style.display = game.players.length ? 'none' : '';
+      document.getElementById('duplicate-players-btn').style.display = game.players.length ? '' : 'none';
+      chips.innerHTML = game.players.map(p => `
+        <span class="player-chip">${esc(p.name)}<button onclick="removePlayer('${p.id}')" title="Remove"><i class="bi bi-x"></i></button></span>
+      `).join('');
+    }
+
+    function duplicatePlayers() {
+      if (!currentId || !game.players.length) return;
+      const name = prompt(`New ${APP_LABEL} name:`, `Game ${Object.keys(records).length + 1}`); if (!name) return;
+      const id = uid();
+      const newPlayers = game.players.map(p => ({ id: uid(), name: p.name }));
+      const scores = {};
+      newPlayers.forEach(p => scores[p.id] = {});
+      records[id] = { name: name.trim(), data: { players: newPlayers, scores } };
+      saveAll();
+      selectRecord(id);
+      renderSidebar();
+      toggleSidebar();
+    }
+
+    function scoreCell(playerId, cat) {
+      const val = (game.scores[playerId] || {})[cat.key];
+      const current = (val === null || val === undefined) ? '' : val;
+
+      if (cat.type === 'fixed') {
+        return `<td><select class="score-input" onchange="setScore('${playerId}','${cat.key}',this.value)">
+          <option value="" ${current === '' ? 'selected' : ''}>—</option>
+          <option value="0" ${current === 0 ? 'selected' : ''}>0</option>
+          <option value="${cat.value}" ${current === cat.value ? 'selected' : ''}>${cat.value}</option>
+        </select></td>`;
+      }
+      if (cat.type === 'multiple') {
+        let options = `<option value="" ${current === '' ? 'selected' : ''}>—</option>`;
+        for (let i = 0; i <= 5; i++) {
+          const v = i * cat.face;
+          options += `<option value="${v}" ${current === v ? 'selected' : ''}>${v}</option>`;
+        }
+        return `<td><select class="score-input" onchange="setScore('${playerId}','${cat.key}',this.value)">${options}</select></td>`;
+      }
+      // 'sum' — free entry, but clamped/snapped to 0 or 5–30 on change
+      return `<td><input type="number" min="0" max="30" class="score-input" value="${current}"
+                onchange="setScore('${playerId}','${cat.key}',this.value)"></td>`;
+    }
+
+    function renderScorecard() {
+      const wrap = document.getElementById('scorecard-wrap');
+      if (!game.players.length) {
+        wrap.innerHTML = '<p style="font-size:13px;color:#888">Add players above to start the scorecard.</p>';
+        document.getElementById('winner-banner').style.display = 'none';
+        return;
+      }
+      const totals = {};
+      game.players.forEach(p => totals[p.id] = calcTotals(p.id));
+
+      const header = `
+        <tr>
+          <th class="cat-label">Category</th>
+          ${game.players.map(p => `
+            <th class="player-col">
+              <div class="player-col-name">${esc(p.name)}<button onclick="removePlayer('${p.id}')" title="Remove"><i class="bi bi-x"></i></button></div>
+            </th>`).join('')}
+        </tr>`;
+
+      const upperRows = UPPER.map(cat => `
+        <tr>
+          <td class="cat-label">${cat.label}<span class="cat-hint">${cat.hint}</span></td>
+          ${game.players.map(p => scoreCell(p.id, cat)).join('')}
+        </tr>`).join('');
+
+      const upperSubtotalRow = `
+        <tr class="section-row">
+          <td class="cat-label">Upper subtotal</td>
+          ${game.players.map(p => `<td>${totals[p.id].upperSum}</td>`).join('')}
+        </tr>
+        <tr class="section-row">
+          <td class="cat-label">Bonus (63+ = 35)</td>
+          ${game.players.map(p => `<td>${totals[p.id].bonus}</td>`).join('')}
+        </tr>`;
+
+      const lowerRows = LOWER.map(cat => `
+        <tr>
+          <td class="cat-label">${cat.label}<span class="cat-hint">${cat.hint}</span></td>
+          ${game.players.map(p => scoreCell(p.id, cat)).join('')}
+        </tr>`).join('');
+
+      const bonusYahtzeeRow = `
+        <tr>
+          <td class="cat-label">Extra Yahtzees<span class="cat-hint">×100 each</span></td>
+          ${game.players.map(p => `
+            <td><input type="number" min="0" class="score-input" value="${(game.scores[p.id] || {}).yahtzeeBonus || ''}"
+                  onchange="setScore('${p.id}','yahtzeeBonus',this.value)"></td>`).join('')}
+        </tr>`;
+
+      const grandRow = `
+        <tr class="total-row">
+          <td class="cat-label">TOTAL</td>
+          ${game.players.map(p => `<td>${totals[p.id].grand}</td>`).join('')}
+        </tr>`;
+
+      wrap.innerHTML = `
+        <div class="score-scroll">
+          <table class="scorecard">
+            <thead>${header}</thead>
+            <tbody>${upperRows}${upperSubtotalRow}${lowerRows}${bonusYahtzeeRow}${grandRow}</tbody>
+          </table>
+        </div>`;
+
+      renderWinnerBanner(totals);
+    }
+
+    function renderWinnerBanner(totals) {
+      const banner = document.getElementById('winner-banner');
+      const allComplete = game.players.length > 0 && game.players.every(p => totals[p.id].complete);
+      if (!allComplete) { banner.style.display = 'none'; return; }
+      const best = Math.max(...game.players.map(p => totals[p.id].grand));
+      const winners = game.players.filter(p => totals[p.id].grand === best);
+      const names = winners.map(p => esc(p.name)).join(' & ');
+      banner.style.display = 'flex';
+      banner.innerHTML = `<i class="bi bi-trophy-fill trophy" style="font-size:22px"></i> ${winners.length > 1 ? 'Tie!' : 'Winner:'} ${names} — ${best} points`;
+    }
+
+    function renderDomain() {
+      renderPlayerChips();
+      renderScorecard();
+    }
+
+    /* ════════════════════════════════════════════════════════════════════
+       CORE INFRASTRUCTURE — records, persistence, sidebar, URL sharing.
+       ════════════════════════════════════════════════════════════════════ */
+    let records = {};      // { [id]: { name, data } }
+    let currentId = null;
+
+    function saveAll() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(records)); } catch (e) {} }
+    function loadAll() { try { const raw = localStorage.getItem(STORAGE_KEY); if (raw) records = JSON.parse(raw); } catch (e) {} }
+    function uid() { return Math.random().toString(36).slice(2, 10); }
+    function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+    function newRecord() {
+      const name = prompt(`New ${APP_LABEL} name:`, `Game ${Object.keys(records).length + 1}`); if (!name) return;
+      const id = uid();
+      records[id] = { name: name.trim(), data: { players: [], scores: {} } };
+      saveAll();
+      selectRecord(id);
+      renderSidebar();
+      toggleSidebar();
+    }
+    function selectRecord(id) {
+      if (!records[id]) return;
+      currentId = id;
+      game = records[id].data;
+      if (!game.players) game.players = [];
+      if (!game.scores) game.scores = {};
+      document.getElementById('no-record').style.display = 'none';
+      document.getElementById('record-ui').style.display = '';
+      document.getElementById('record-title').textContent = records[id].name;
+      document.getElementById('share-btn').style.display = '';
+      document.getElementById('reset-btn').style.display = '';
+      renderSidebar();
+      onUpdate();
+    }
+    function renameRecord(id, e) {
+      e.stopPropagation();
+      const name = prompt(`Rename ${APP_LABEL}:`, records[id].name); if (!name) return;
+      records[id].name = name.trim();
+      if (currentId === id) document.getElementById('record-title').textContent = records[id].name;
+      saveAll(); renderSidebar();
+    }
+    function deleteRecord(id, e) {
+      e.stopPropagation();
+      if (!confirm(`Delete "${records[id].name}"?`)) return;
+      delete records[id];
+      saveAll();
+      if (currentId === id) {
+        currentId = null; game = { players: [], scores: {} };
+        document.getElementById('no-record').style.display = '';
+        document.getElementById('record-ui').style.display = 'none';
+        document.getElementById('record-title').textContent = 'Select a game';
+        document.getElementById('share-btn').style.display = 'none';
+        document.getElementById('reset-btn').style.display = 'none';
+      }
+      renderSidebar();
+    }
+    function renderSidebar() {
+      const list = document.getElementById('record-list');
+      const ids = Object.keys(records);
+      if (!ids.length) { list.innerHTML = '<div style="padding:12px;font-size:13px;color:#aaa;text-align:center">No games yet</div>'; return; }
+      list.innerHTML = ids.map(id => `
+        <div class="record-item${id === currentId ? ' active' : ''}" onclick="selectRecord('${id}');toggleSidebar()">
+          <i class="bi bi-dice-5" style="font-size:15px;flex-shrink:0"></i>
+          <span class="record-name">${esc(records[id].name)}</span>
+          <button class="btn-icon-sm" onclick="renameRecord('${id}',event)" title="Rename"><i class="bi bi-pencil"></i></button>
+          <button class="btn-icon-sm" onclick="deleteRecord('${id}',event)" title="Delete" style="color:#c0392b"><i class="bi bi-trash"></i></button>
+        </div>`).join('');
+    }
+
+    function toggleSidebar() {
+      const sb = document.getElementById('sidebar');
+      if (window.innerWidth <= 640) {
+        const opening = !sb.classList.contains('open');
+        sb.classList.toggle('open', opening);
+        document.getElementById('sidebar-overlay').classList.toggle('show', opening);
+      } else {
+        sb.classList.toggle('collapsed');
+      }
+    }
+
+    function shareRecord() {
+      if (!currentId) return;
+      const payload = { name: records[currentId].name, data: game };
+      const compressed = LZString.compressToEncodedURIComponent(JSON.stringify(payload));
+      const url = location.href.split('#')[0] + '#share=' + compressed;
+      navigator.clipboard.writeText(url).then(() => {
+        const btn = document.getElementById('share-btn');
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<i class="bi bi-check"></i>';
+        setTimeout(() => btn.innerHTML = orig, 2000);
+      }).catch(() => prompt('Copy this link:', url));
+    }
+    function checkUrlShare() {
+      const hash = location.hash;
+      if (!hash.startsWith('#share=')) return;
+      try {
+        const compressed = hash.slice(7);
+        const payload = JSON.parse(LZString.decompressFromEncodedURIComponent(compressed));
+        if (!payload || !payload.data) return;
+        if (!confirm(`You've been sent a ${APP_LABEL}: "${payload.name}". Import it?`)) { history.replaceState(null, '', location.pathname); return; }
+        const id = uid();
+        records[id] = { name: payload.name, data: payload.data };
+        saveAll();
+        selectRecord(id);
+        renderSidebar();
+        history.replaceState(null, '', location.pathname);
+      } catch (e) { console.warn('Invalid share URL'); }
+    }
+
+    function onUpdate() {
+      if (currentId) { records[currentId].data = game; saveAll(); }
+      renderDomain();
+    }
+    function resetAll() {
+      if (!confirm(`Clear all data in this ${APP_LABEL}?`)) return;
+      game = { players: [], scores: {} }; onUpdate();
+    }
+
+    function initGithubLink() {
+      const m = location.hostname.match(/^([^.]+)\.github\.io$/);
+      if (!m) return;
+      const user = m[1];
+      const repo = location.pathname.split('/').filter(Boolean)[0];
+      if (!repo) return;
+      const link = document.getElementById('github-link');
+      link.href = `https://github.com/${user}/${repo}`;
+      link.style.display = 'inline-flex';
+    }
+
+    // ─── Init ───────────────────────────────────────────────────────────
+    loadAll();
+    renderSidebar();
+    checkUrlShare();
+    initGithubLink();
+    if (!currentId) {
+      const ids = Object.keys(records);
+      if (ids.length === 1) selectRecord(ids[0]);
+    }
+  </script>
+</body>
+</html>
